@@ -73,7 +73,7 @@ export interface ApprovalDecisionEmailPayload {
 // Resend client
 // ---------------------------------------------------------------------------
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+const resend = new Resend(process.env.RESEND_API_KEY ?? "placeholder");
 
 const FROM_EMAIL =
   process.env.RESEND_FROM_EMAIL ?? "PostSyncer <hello@postsyncer.com>";

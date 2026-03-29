@@ -10,9 +10,7 @@ const nextConfig: NextConfig = {
       { hostname: "*.postsyncer.com" },
     ],
   },
-  experimental: {
-    serverComponentsExternalPackages: ["@prisma/client"],
-  },
+  serverExternalPackages: ["@prisma/client"],
 };
 
 export default nextConfig;

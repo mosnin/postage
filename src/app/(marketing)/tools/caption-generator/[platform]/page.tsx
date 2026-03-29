@@ -100,7 +100,7 @@ const PLATFORM_CONFIG: Record<
   },
 };
 
-export const PLATFORMS = Object.keys(PLATFORM_CONFIG);
+const PLATFORMS = Object.keys(PLATFORM_CONFIG);
 
 // ---------------------------------------------------------------------------
 // Static params

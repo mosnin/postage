@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
@@ -469,7 +469,7 @@ function Step4({ onDone }: { onDone: () => void }) {
 // ---------------------------------------------------------------------------
 // Onboarding Page (root)
 // ---------------------------------------------------------------------------
-export default function OnboardingPage() {
+function OnboardingPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const rawStep = searchParams.get("step");
@@ -528,5 +528,13 @@ export default function OnboardingPage() {
         <Step4 onDone={() => router.push("/dashboard")} />
       )}
     </div>
+  );
+}
+
+export default function OnboardingPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-background" />}>
+      <OnboardingPageInner />
+    </Suspense>
   );
 }

@@ -1,6 +1,8 @@
 import OpenAI from "openai";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+function getOpenAI(): OpenAI {
+  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY ?? "placeholder" });
+}
 
 // ─── Caption Generation ───────────────────────────────────────────────────────
 
@@ -41,7 +43,7 @@ Platform-specific guidelines:
 Return ONLY a valid JSON array of ${count} caption strings, no extra text, no markdown fences:
 ["caption 1", "caption 2", "caption 3"]`;
 
-  const response = await openai.chat.completions.create({
+  const response = await getOpenAI().chat.completions.create({
     model: "gpt-4o",
     messages: [{ role: "user", content: prompt }],
     temperature: 0.85,
@@ -93,7 +95,7 @@ Rules:
 Return ONLY a valid JSON array, no markdown, no extra text:
 [{"tag":"#example","relevance":95},{"tag":"#another","relevance":80}]`;
 
-  const response = await openai.chat.completions.create({
+  const response = await getOpenAI().chat.completions.create({
     model: "gpt-4o",
     messages: [{ role: "user", content: prompt }],
     temperature: 0.7,
@@ -181,7 +183,7 @@ For each platform follow its character limits and style:
 Return ONLY a valid JSON array, no markdown fences:
 [{"platform":"TWITTER","content":"post text"},{"platform":"INSTAGRAM","content":"post text"}]`;
 
-  const response = await openai.chat.completions.create({
+  const response = await getOpenAI().chat.completions.create({
     model: "gpt-4o",
     messages: [{ role: "user", content: prompt }],
     temperature: 0.8,
@@ -242,7 +244,7 @@ Guidelines:
 Return ONLY a valid JSON array of 3 strings, no markdown:
 ["reply 1", "reply 2", "reply 3"]`;
 
-  const response = await openai.chat.completions.create({
+  const response = await getOpenAI().chat.completions.create({
     model: "gpt-4o",
     messages: [{ role: "user", content: prompt }],
     temperature: 0.8,

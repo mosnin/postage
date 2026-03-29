@@ -1,0 +1,1031 @@
+openapi: 3.1.0
+
+info:
+  title: PostSyncer API
+  version: 1.0.0
+  description: |
+    The PostSyncer public REST API lets you create and manage social media posts,
+    inspect connected accounts, query analytics, and list workspaces — all
+    programmatically.
+
+    ## Authentication
+    Every request must include a Bearer API key in the `Authorization` header:
+
+    ```
+    Authorization: Bearer pst_live_xxxxxxxxxxxx
+    ```
+
+    API keys are scoped. Each endpoint documents the scope it requires. A `403`
+    with code `INSUFFICIENT_SCOPE` is returned when the key lacks the necessary
+    permission.
+
+    ## Rate Limiting
+    Write operations (POST / PUT / DELETE) are counted against a per-key daily
+    limit that depends on your plan. Read operations are unlimited. The current
+    limit and remaining count are returned in response headers:
+
+    | Header | Description |
+    |---|---|
+    | `X-RateLimit-Limit` | Daily write limit for your plan |
+    | `X-RateLimit-Remaining` | Writes remaining today |
+    | `Retry-After` | Seconds until the limit resets (only on 429) |
+
+    Limits reset at midnight UTC.
+
+    ## Pagination
+    List endpoints accept `page` and `pageSize` query parameters and return a
+    `meta` object alongside `data`:
+
+    ```json
+    {
+      "data": [...],
+      "meta": { "total": 42, "page": 1, "pageSize": 20, "hasNext": true }
+    }
+    ```
+
+  contact:
+    name: PostSyncer Support
+    url: https://postsyncer.com/support
+    email: support@postsyncer.com
+
+servers:
+  - url: https://postsyncer.com/api/v1
+    description: Production
+
+security:
+  - BearerAuth: []
+
+tags:
+  - name: Posts
+    description: Create, update, and query social media posts
+  - name: Accounts
+    description: Connected social accounts for the authenticated workspace
+  - name: Analytics
+    description: Aggregated engagement metrics across platforms
+  - name: Workspaces
+    description: Workspaces the authenticated user belongs to
+
+# ---------------------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------------------
+paths:
+
+  # ── Posts ──────────────────────────────────────────────────────────────────
+  /posts:
+    get:
+      operationId: listPosts
+      tags: [Posts]
+      summary: List posts
+      description: |
+        Returns a paginated list of posts for the authenticated workspace.
+        Requires the `posts:read` scope.
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: status
+          in: query
+          description: Filter by post status
+          schema:
+            $ref: '#/components/schemas/PostStatus'
+        - name: platform
+          in: query
+          description: Filter to posts targeted at a specific platform
+          schema:
+            $ref: '#/components/schemas/Platform'
+        - name: accountId
+          in: query
+          description: Filter to posts targeting a specific social account ID
+          schema:
+            type: string
+        - name: labelId
+          in: query
+          description: Filter to posts that have a specific label ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Paginated list of posts
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Post'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+    post:
+      operationId: createPost
+      tags: [Posts]
+      summary: Create a post
+      description: |
+        Creates a new post and attaches it to one or more social accounts.
+        Pass a `scheduledAt` timestamp to schedule the post; omit it to save as
+        a draft. Requires the `posts:write` scope.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePostRequest'
+      responses:
+        '201':
+          description: Post created
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Post'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /posts/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdParam'
+
+    get:
+      operationId: getPost
+      tags: [Posts]
+      summary: Get a post
+      description: |
+        Returns a single post by ID. Requires the `posts:read` scope.
+      responses:
+        '200':
+          description: Post object
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Post'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+    put:
+      operationId: updatePost
+      tags: [Posts]
+      summary: Update a post
+      description: |
+        Updates an existing draft or scheduled post. Published or currently
+        publishing posts cannot be edited (returns `422 POST_NOT_EDITABLE`).
+        Requires the `posts:write` scope.
+
+        All fields are optional; only the fields you supply are updated. To
+        remove a nullable field pass `null` explicitly.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePostRequest'
+      responses:
+        '200':
+          description: Updated post
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Post'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+    delete:
+      operationId: deletePost
+      tags: [Posts]
+      summary: Delete a post
+      description: |
+        Permanently deletes a post. Requires the `posts:write` scope.
+      responses:
+        '204':
+          description: Post deleted — no content returned
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  # ── Accounts ───────────────────────────────────────────────────────────────
+  /accounts:
+    get:
+      operationId: listAccounts
+      tags: [Accounts]
+      summary: List social accounts
+      description: |
+        Returns all connected social accounts for the authenticated workspace.
+        Requires the `accounts:read` scope.
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: platform
+          in: query
+          description: Filter by social platform
+          schema:
+            $ref: '#/components/schemas/Platform'
+        - name: status
+          in: query
+          description: Filter by account connection status
+          schema:
+            $ref: '#/components/schemas/AccountStatus'
+      responses:
+        '200':
+          description: Paginated list of social accounts
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/SocialAccount'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  # ── Analytics ──────────────────────────────────────────────────────────────
+  /analytics:
+    get:
+      operationId: getAnalytics
+      tags: [Analytics]
+      summary: Get analytics summary
+      description: |
+        Returns aggregated engagement metrics for the workspace over a date
+        range. Defaults to the last 30 days when no dates are supplied.
+        Requires the `analytics:read` scope.
+      parameters:
+        - name: start
+          in: query
+          description: |
+            Start date (inclusive) in `YYYY-MM-DD` format. Defaults to 30 days
+            before `end`.
+          schema:
+            type: string
+            format: date
+            example: '2025-01-01'
+        - name: end
+          in: query
+          description: |
+            End date (inclusive) in `YYYY-MM-DD` format. Defaults to today.
+          schema:
+            type: string
+            format: date
+            example: '2025-01-31'
+        - name: platform
+          in: query
+          description: Filter metrics to a single platform
+          schema:
+            $ref: '#/components/schemas/Platform'
+      responses:
+        '200':
+          description: Analytics summary
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AnalyticsSummary'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  # ── Workspaces ─────────────────────────────────────────────────────────────
+  /workspaces:
+    get:
+      operationId: listWorkspaces
+      tags: [Workspaces]
+      summary: List workspaces
+      description: |
+        Returns all workspaces the API key owner is an active member of.
+        No additional scope is required beyond a valid API key.
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+      responses:
+        '200':
+          description: Paginated list of workspaces
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Workspace'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+# ---------------------------------------------------------------------------
+# Components
+# ---------------------------------------------------------------------------
+components:
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        Pass your PostSyncer API key as a Bearer token. Keys can be created in
+        **Settings → API Keys**. Each key has a set of scopes that control
+        which endpoints it can call.
+
+  # ── Parameters ─────────────────────────────────────────────────────────────
+  parameters:
+    IdParam:
+      name: id
+      in: path
+      required: true
+      description: Resource ID
+      schema:
+        type: string
+
+    PageParam:
+      name: page
+      in: query
+      description: Page number (1-based)
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+
+    PageSizeParam:
+      name: pageSize
+      in: query
+      description: Number of results per page (max 100)
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
+  # ── Headers ────────────────────────────────────────────────────────────────
+  headers:
+    XRateLimitLimit:
+      description: Maximum daily write operations for your plan
+      schema:
+        type: integer
+    XRateLimitRemaining:
+      description: Write operations remaining today
+      schema:
+        type: integer
+
+  # ── Schemas ────────────────────────────────────────────────────────────────
+  schemas:
+
+    # Enumerations
+    PostStatus:
+      type: string
+      enum: [DRAFT, SCHEDULED, PUBLISHING, PUBLISHED, FAILED, CANCELLED]
+      description: Lifecycle state of a post
+
+    Platform:
+      type: string
+      enum:
+        - TWITTER
+        - INSTAGRAM
+        - FACEBOOK
+        - LINKEDIN
+        - TIKTOK
+        - YOUTUBE
+        - PINTEREST
+        - THREADS
+        - BLUESKY
+      description: Social media platform identifier
+
+    AccountStatus:
+      type: string
+      enum: [ACTIVE, EXPIRED, DISCONNECTED, ERROR]
+      description: Connection state of a social account
+
+    # Reusable building blocks
+    PaginationMeta:
+      type: object
+      required: [total, page, pageSize, hasNext]
+      properties:
+        total:
+          type: integer
+          description: Total number of records matching the query
+          example: 42
+        page:
+          type: integer
+          description: Current page number
+          example: 1
+        pageSize:
+          type: integer
+          description: Number of records per page
+          example: 20
+        hasNext:
+          type: boolean
+          description: Whether a subsequent page exists
+          example: true
+
+    PaginatedResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: {}
+          description: Array of result objects (schema varies by endpoint)
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    ApiError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: Human-readable error message
+          example: Post not found
+        code:
+          type: string
+          description: |
+            Machine-readable error code. Common values:
+            `MISSING_AUTH`, `INVALID_API_KEY`, `API_KEY_EXPIRED`,
+            `INSUFFICIENT_SCOPE`, `PLAN_NOT_SUPPORTED`,
+            `VALIDATION_ERROR`, `INVALID_JSON`, `NOT_FOUND`,
+            `RATE_LIMIT_EXCEEDED`, `POST_NOT_EDITABLE`,
+            `INVALID_ACCOUNT_IDS`
+          example: NOT_FOUND
+        details:
+          type: object
+          description: Field-level validation errors (present on VALIDATION_ERROR only)
+          additionalProperties:
+            type: array
+            items:
+              type: string
+          example:
+            content: ['content is required']
+
+    # Labels
+    Label:
+      type: object
+      required: [id, name, color]
+      properties:
+        id:
+          type: string
+          example: lbl_01HXK2P9QRJG4
+        name:
+          type: string
+          example: Campaign Q1
+        color:
+          type: string
+          example: '#6366f1'
+
+    # Media
+    MediaFile:
+      type: object
+      required: [id, name, url, mimeType, size]
+      properties:
+        id:
+          type: string
+          example: med_01HXK2P9QRJG4
+        name:
+          type: string
+          example: hero-image.png
+        url:
+          type: string
+          format: uri
+          example: https://cdn.postsyncer.com/media/hero-image.png
+        mimeType:
+          type: string
+          example: image/png
+        size:
+          type: integer
+          description: File size in bytes
+          example: 204800
+
+    PostAccount:
+      type: object
+      description: A social account targeted by a post, including its per-platform publish status
+      required: [socialAccountId, status, socialAccount]
+      properties:
+        socialAccountId:
+          type: string
+          example: acc_01HXK2P9QRJG4
+        status:
+          $ref: '#/components/schemas/PostStatus'
+        socialAccount:
+          type: object
+          required: [id, platform, username]
+          properties:
+            id:
+              type: string
+              example: acc_01HXK2P9QRJG4
+            platform:
+              $ref: '#/components/schemas/Platform'
+            username:
+              type: string
+              example: postsyncer_hq
+            displayName:
+              type: string
+              nullable: true
+              example: PostSyncer HQ
+            avatarUrl:
+              type: string
+              format: uri
+              nullable: true
+              example: https://pbs.twimg.com/profile_images/postsyncer.jpg
+
+    Post:
+      type: object
+      required: [id, workspaceId, authorId, content, status, createdAt, updatedAt, accounts, labels]
+      properties:
+        id:
+          type: string
+          example: pst_01HXK2P9QRJG4
+        workspaceId:
+          type: string
+          example: ws_01HXK2P9QRJG4
+        authorId:
+          type: string
+          example: usr_01HXK2P9QRJG4
+        content:
+          type: string
+          example: Excited to share our latest update! #ProductLaunch
+        firstComment:
+          type: string
+          nullable: true
+          description: First comment to post immediately after publishing (Instagram / LinkedIn)
+          example: Link in bio!
+        scheduledAt:
+          type: string
+          format: date-time
+          nullable: true
+          example: '2025-06-01T09:00:00Z'
+        publishedAt:
+          type: string
+          format: date-time
+          nullable: true
+          example: '2025-06-01T09:00:12Z'
+        status:
+          $ref: '#/components/schemas/PostStatus'
+        accounts:
+          type: array
+          items:
+            $ref: '#/components/schemas/PostAccount'
+        labels:
+          type: array
+          items:
+            type: object
+            required: [label]
+            properties:
+              label:
+                $ref: '#/components/schemas/Label'
+        media:
+          type: array
+          description: Attached media files ordered by display position
+          items:
+            type: object
+            required: [order, mediaFile]
+            properties:
+              order:
+                type: integer
+                example: 0
+              mediaFile:
+                $ref: '#/components/schemas/MediaFile'
+        createdAt:
+          type: string
+          format: date-time
+          example: '2025-05-20T14:22:00Z'
+        updatedAt:
+          type: string
+          format: date-time
+          example: '2025-05-20T14:22:00Z'
+
+    SocialAccount:
+      type: object
+      required: [id, platform, platformId, username, status, connectedAt, updatedAt]
+      properties:
+        id:
+          type: string
+          example: acc_01HXK2P9QRJG4
+        platform:
+          $ref: '#/components/schemas/Platform'
+        platformId:
+          type: string
+          description: The account's native ID on the platform
+          example: '1234567890'
+        username:
+          type: string
+          example: postsyncer_hq
+        displayName:
+          type: string
+          nullable: true
+          example: PostSyncer HQ
+        avatarUrl:
+          type: string
+          format: uri
+          nullable: true
+          example: https://pbs.twimg.com/profile_images/postsyncer.jpg
+        status:
+          $ref: '#/components/schemas/AccountStatus'
+        connectedAt:
+          type: string
+          format: date-time
+          example: '2024-11-01T10:00:00Z'
+        updatedAt:
+          type: string
+          format: date-time
+          example: '2025-05-01T08:30:00Z'
+        _count:
+          type: object
+          description: Related resource counts
+          properties:
+            posts:
+              type: integer
+              example: 87
+
+    MetricTotals:
+      type: object
+      required:
+        - impressions
+        - engagements
+        - likes
+        - comments
+        - shares
+        - clicks
+        - reach
+        - saves
+        - followerChange
+      properties:
+        impressions:
+          type: integer
+          example: 45200
+        engagements:
+          type: integer
+          example: 3100
+        likes:
+          type: integer
+          example: 2400
+        comments:
+          type: integer
+          example: 380
+        shares:
+          type: integer
+          example: 210
+        clicks:
+          type: integer
+          example: 510
+        reach:
+          type: integer
+          example: 38000
+        saves:
+          type: integer
+          example: 310
+        followerChange:
+          type: integer
+          description: Net follower change over the period (can be negative)
+          example: 145
+
+    AnalyticsSummary:
+      type: object
+      required: [summary, byPlatform, dateRange]
+      properties:
+        summary:
+          allOf:
+            - $ref: '#/components/schemas/MetricTotals'
+            - type: object
+              required: [postsCount]
+              properties:
+                postsCount:
+                  type: integer
+                  description: Number of posts published in the period
+                  example: 23
+        byPlatform:
+          type: object
+          description: |
+            Per-platform metric totals. Keys are `Platform` enum values;
+            only platforms with data in the range are included.
+          additionalProperties:
+            $ref: '#/components/schemas/MetricTotals'
+          example:
+            TWITTER:
+              impressions: 22000
+              engagements: 1500
+              likes: 1200
+              comments: 180
+              shares: 95
+              clicks: 230
+              reach: 19000
+              saves: 90
+              followerChange: 70
+        dateRange:
+          type: object
+          required: [start, end]
+          properties:
+            start:
+              type: string
+              format: date
+              example: '2025-01-01'
+            end:
+              type: string
+              format: date
+              example: '2025-01-31'
+
+    Workspace:
+      type: object
+      required: [id, name, slug, plan, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          example: ws_01HXK2P9QRJG4
+        name:
+          type: string
+          example: Acme Marketing
+        slug:
+          type: string
+          example: acme-marketing
+        logoUrl:
+          type: string
+          format: uri
+          nullable: true
+          example: https://cdn.postsyncer.com/logos/acme.png
+        plan:
+          type: string
+          enum: [FREE, STARTER, PRO, BUSINESS, ENTERPRISE]
+          example: PRO
+        timezone:
+          type: string
+          nullable: true
+          example: America/New_York
+        createdAt:
+          type: string
+          format: date-time
+          example: '2024-01-15T09:00:00Z'
+        updatedAt:
+          type: string
+          format: date-time
+          example: '2025-03-01T11:00:00Z'
+        _count:
+          type: object
+          description: Related resource counts
+          properties:
+            socialAccounts:
+              type: integer
+              example: 8
+            members:
+              type: integer
+              example: 5
+
+    # Request bodies
+    CreatePostRequest:
+      type: object
+      required: [content, accountIds]
+      properties:
+        content:
+          type: string
+          minLength: 1
+          description: Post body text
+          example: Excited to share our latest update! #ProductLaunch
+        accountIds:
+          type: array
+          minItems: 1
+          description: One or more social account IDs to publish to
+          items:
+            type: string
+          example:
+            - acc_01HXK2P9QRJG4
+            - acc_02HYL3Q0RSJH5
+        scheduledAt:
+          type: string
+          format: date-time
+          description: |
+            ISO 8601 datetime with timezone offset. When present the post is
+            created with status `SCHEDULED`; when omitted it is saved as
+            `DRAFT`.
+          example: '2025-06-01T09:00:00+00:00'
+        firstComment:
+          type: string
+          description: |
+            Text to post as the first comment immediately after publishing
+            (supported on Instagram and LinkedIn).
+          example: Link in bio!
+        labels:
+          type: array
+          description: |
+            Label IDs or label names to attach to the post. Non-matching
+            values are silently ignored.
+          items:
+            type: string
+          example:
+            - Campaign Q1
+            - Product
+
+    UpdatePostRequest:
+      type: object
+      description: All fields are optional. Only supplied fields are updated.
+      properties:
+        content:
+          type: string
+          minLength: 1
+          example: Updated caption — now with more 🚀
+        scheduledAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Set to `null` to remove the scheduled time and revert to draft
+          example: '2025-07-01T10:00:00+00:00'
+        firstComment:
+          type: string
+          nullable: true
+          example: New first comment
+        status:
+          $ref: '#/components/schemas/PostStatus'
+        labels:
+          type: array
+          description: Replaces the full label set on the post
+          items:
+            type: string
+          example:
+            - Campaign Q2
+
+  # ── Responses ──────────────────────────────────────────────────────────────
+  responses:
+    BadRequest:
+      description: |
+        Invalid request — malformed JSON or failed field validation.
+        The `code` field will be `INVALID_JSON` or `VALIDATION_ERROR`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          examples:
+            validation_error:
+              summary: Validation error
+              value:
+                error: Validation failed
+                code: VALIDATION_ERROR
+                details:
+                  content: ['content is required']
+            invalid_json:
+              summary: Malformed JSON
+              value:
+                error: Invalid JSON body
+                code: INVALID_JSON
+
+    Unauthorized:
+      description: |
+        Missing, invalid, or expired API key. Check the `code` field:
+        - `MISSING_AUTH` — no Authorization header
+        - `INVALID_API_KEY` — key not found
+        - `API_KEY_EXPIRED` — key has passed its expiry date
+        - `INSUFFICIENT_SCOPE` — key lacks the required scope (HTTP 403)
+        - `PLAN_NOT_SUPPORTED` — your plan does not include API access (HTTP 403)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          examples:
+            missing_auth:
+              summary: No Authorization header
+              value:
+                error: Missing or invalid Authorization header. Use: Bearer <api_key>
+                code: MISSING_AUTH
+            invalid_key:
+              summary: Invalid API key
+              value:
+                error: Invalid API key
+                code: INVALID_API_KEY
+
+    NotFound:
+      description: The requested resource does not exist in this workspace
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          examples:
+            not_found:
+              summary: Resource not found
+              value:
+                error: Post not found
+                code: NOT_FOUND
+
+    UnprocessableEntity:
+      description: |
+        The request was syntactically valid but could not be processed.
+        Common codes: `INVALID_ACCOUNT_IDS`, `POST_NOT_EDITABLE`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          examples:
+            invalid_accounts:
+              summary: Account IDs not in workspace
+              value:
+                error: One or more accountIds do not belong to this workspace
+                code: INVALID_ACCOUNT_IDS
+            not_editable:
+              summary: Post already published
+              value:
+                error: Cannot edit a post that is published or currently publishing
+                code: POST_NOT_EDITABLE
+
+    RateLimited:
+      description: Daily write limit exceeded
+      headers:
+        Retry-After:
+          description: Seconds until the limit resets (midnight UTC)
+          schema:
+            type: integer
+        X-RateLimit-Limit:
+          $ref: '#/components/headers/XRateLimitLimit'
+        X-RateLimit-Remaining:
+          $ref: '#/components/headers/XRateLimitRemaining'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          examples:
+            rate_limit:
+              summary: Rate limit exceeded
+              value:
+                error: Rate limit exceeded. Daily write limit reached.
+                code: RATE_LIMIT_EXCEEDED

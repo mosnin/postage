@@ -16,6 +16,7 @@ const ALLOWED_SCOPES = [
   "labels:write",
   "campaigns:read",
   "campaigns:write",
+  "mcp",
 ] as const;
 
 const createSchema = z.object({

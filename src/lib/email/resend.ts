@@ -82,7 +82,8 @@ const FROM_EMAIL =
 // Core send helper (React Email templates)
 // ---------------------------------------------------------------------------
 
-export async function sendEmail<T extends Record<string, unknown>>({
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function sendEmail<T extends Record<string, any>>({
   to,
   subject,
   template: Template,

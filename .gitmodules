@@ -1,0 +1,3 @@
+[submodule ".melted-peak"]
+	path = .melted-peak
+	url = https://github.com/mosnin/melted-peak.git

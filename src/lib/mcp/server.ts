@@ -1,7 +1,7 @@
 import { createHash } from "crypto";
 import { db } from "@/lib/db";
 import { MCP_TOOLS } from "./tools";
-import { PostStatus } from "@prisma/client";
+import { PostStatus, CommentStatus } from "@prisma/client";
 import { startOfDay, endOfDay, subDays } from "date-fns";
 
 // ---------------------------------------------------------------------------
@@ -442,7 +442,7 @@ async function handleListComments(auth: AuthContext, args: Args) {
 
   const where = {
     socialAccountId: { in: socialAccountIds },
-    ...(args.status ? { status: args.status as string } : {}),
+    ...(args.status ? { status: args.status as CommentStatus } : {}),
   };
 
   const [total, comments] = await Promise.all([

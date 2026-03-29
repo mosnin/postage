@@ -94,13 +94,13 @@ export function DraftsList({ workspaceId }: DraftsListProps) {
   const allDrafts = data?.data ?? [];
 
   // Compute available platforms
-  const allPlatforms = [
-    ...new Set(
+  const allPlatforms = Array.from(
+    new Set(
       allDrafts.flatMap((p) =>
         p.accounts.map((a) => a.socialAccount.platform)
       )
-    ),
-  ].sort();
+    )
+  ).sort();
 
   // Filter by platform
   const filtered =
@@ -285,11 +285,11 @@ export function DraftsList({ workspaceId }: DraftsListProps) {
             </thead>
             <tbody className="divide-y">
               {sorted.map((post) => {
-                const platforms = [
-                  ...new Set(
+                const platforms = Array.from(
+                  new Set(
                     post.accounts.map((a) => a.socialAccount.platform)
-                  ),
-                ];
+                  )
+                );
 
                 return (
                   <tr
@@ -321,13 +321,13 @@ export function DraftsList({ workspaceId }: DraftsListProps) {
                       </p>
                       {post.labels.length > 0 && (
                         <div className="flex flex-wrap gap-1 mt-1.5">
-                          {post.labels.map((pl) => (
+                          {post.labels.map((label) => (
                             <span
-                              key={pl.labelId}
+                              key={label.id}
                               className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium text-white"
-                              style={{ backgroundColor: pl.label.color }}
+                              style={{ backgroundColor: label.color }}
                             >
-                              {pl.label.name}
+                              {label.name}
                             </span>
                           ))}
                         </div>

@@ -49,6 +49,6 @@ export function useSession(): UseSessionReturn {
     user,
     isLoading,
     isAuthenticated,
-    isAdmin: user?.role === "SUPER_ADMIN" ?? false,
+    isAdmin: user?.role === "SUPER_ADMIN" || false,
   };
 }

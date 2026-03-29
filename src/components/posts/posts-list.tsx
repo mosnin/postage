@@ -127,7 +127,7 @@ export function PostsList({
                 STATUS_CONFIG[post.status as keyof typeof STATUS_CONFIG] ??
                 STATUS_CONFIG.DRAFT;
               const platforms = post.accounts.map((a) => a.socialAccount.platform);
-              const uniquePlatforms = [...new Set(platforms)];
+              const uniquePlatforms = Array.from(new Set(platforms));
 
               return (
                 <tr
@@ -157,13 +157,13 @@ export function PostsList({
                     </p>
                     {post.labels.length > 0 && (
                       <div className="flex flex-wrap gap-1 mt-1.5">
-                        {post.labels.map((pl) => (
+                        {post.labels.map((label) => (
                           <span
-                            key={pl.labelId}
+                            key={label.id}
                             className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium text-white"
-                            style={{ backgroundColor: pl.label.color }}
+                            style={{ backgroundColor: label.color }}
                           >
-                            {pl.label.name}
+                            {label.name}
                           </span>
                         ))}
                       </div>

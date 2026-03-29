@@ -34,7 +34,8 @@ export function EmailLayout({ children, previewText }: EmailLayoutProps) {
           fontFamily:
             "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
           WebkitTextSizeAdjust: "100%",
-          msTextSizeAdjust: "100%",
+          // @ts-expect-error — vendor prefix not in React.CSSProperties but valid in email clients
+          MsTextSizeAdjust: "100%",
         }}
       >
         {/* Preview text for email clients */}

@@ -1,7 +1,7 @@
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
-import { CreditCard, Key, Bell, User, Users, Settings2 } from "lucide-react";
+import { CreditCard, Key, Bell, User, Users, Settings2, Bot } from "lucide-react";
 import { SettingsNavLink } from "@/components/settings/settings-nav-link";
 
 interface NavItem {
@@ -17,6 +17,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/settings/notifications", label: "Notifications", icon: Bell },
   { href: "/settings/billing", label: "Billing", icon: CreditCard, ownerOnly: true },
   { href: "/settings/api", label: "API Keys", icon: Key, adminOnly: true },
+  { href: "/settings/mcp", label: "MCP / AI Agents", icon: Bot, adminOnly: true },
   { href: "/settings/team", label: "Team", icon: Users },
   { href: "/settings/workspace", label: "Workspace", icon: Settings2 },
 ];

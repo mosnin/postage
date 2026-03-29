@@ -5,7 +5,6 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { WorkspaceRole } from "@prisma/client";
 import {
   Dialog,
   DialogContent,
@@ -27,12 +26,12 @@ import {
 } from "@/components/ui/select";
 import { CheckCircle, Loader2 } from "lucide-react";
 
+const INVITABLE_ROLES = ["ADMIN", "MANAGER", "MEMBER", "VIEWER"] as const;
+type InvitableRole = (typeof INVITABLE_ROLES)[number];
+
 const inviteSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
-  role: z.nativeEnum(WorkspaceRole).refine(
-    (r) => r !== "OWNER",
-    "Cannot invite someone as Owner"
-  ),
+  role: z.enum(INVITABLE_ROLES),
   message: z.string().max(500, "Message must be 500 characters or less").optional(),
 });
 
@@ -44,7 +43,7 @@ interface InviteMemberFormProps {
   onOpenChange: (open: boolean) => void;
 }
 
-const roleOptions: { value: WorkspaceRole; label: string }[] = [
+const roleOptions: { value: InvitableRole; label: string }[] = [
   { value: "ADMIN", label: "Admin" },
   { value: "MANAGER", label: "Manager" },
   { value: "MEMBER", label: "Member" },
@@ -151,7 +150,7 @@ export function InviteMemberForm({
                 <Label htmlFor="invite-role">Role</Label>
                 <Select
                   value={selectedRole}
-                  onValueChange={(v) => setValue("role", v as WorkspaceRole)}
+                  onValueChange={(v) => setValue("role", v as InvitableRole)}
                 >
                   <SelectTrigger id="invite-role">
                     <SelectValue placeholder="Select a role" />

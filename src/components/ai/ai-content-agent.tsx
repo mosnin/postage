@@ -36,21 +36,17 @@ const PLATFORMS = [
 ] as const;
 
 type InputMode = "url" | "text";
+const COUNT_OPTIONS = [1, 3, 5] as const;
 
-const urlSchema = z.object({
-  url: z.string().url("Enter a valid URL"),
+// Single unified form schema — both url and text are optional; validation happens at submit
+const formSchema = z.object({
+  url: z.string().optional(),
+  text: z.string().optional(),
   platforms: z.array(z.string()).min(1, "Select at least one platform"),
   count: z.number().int().min(1).max(5),
 });
 
-const textSchema = z.object({
-  text: z.string().min(10, "Paste at least 10 characters").max(10000),
-  platforms: z.array(z.string()).min(1, "Select at least one platform"),
-  count: z.number().int().min(1).max(5),
-});
-
-type UrlFormValues = z.infer<typeof urlSchema>;
-type TextFormValues = z.infer<typeof textSchema>;
+type FormValues = z.infer<typeof formSchema>;
 
 interface GeneratedPost {
   platform: string;
@@ -77,43 +73,55 @@ export function AiContentAgent({
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
   const [editState, setEditState] = useState<EditState | null>(null);
 
-  const COUNT_OPTIONS = [1, 3, 5] as const;
+  const { register, handleSubmit, watch, setValue, formState } =
+    useForm<FormValues>({
+      resolver: zodResolver(formSchema),
+      defaultValues: {
+        url: "",
+        text: "",
+        platforms: ["INSTAGRAM", "TWITTER"],
+        count: 3,
+      },
+    });
 
-  const urlForm = useForm<UrlFormValues>({
-    resolver: zodResolver(urlSchema),
-    defaultValues: { url: "", platforms: ["INSTAGRAM", "TWITTER"], count: 3 },
-  });
-
-  const textForm = useForm<TextFormValues>({
-    resolver: zodResolver(textSchema),
-    defaultValues: { text: "", platforms: ["INSTAGRAM", "TWITTER"], count: 3 },
-  });
-
-  const activeForm = inputMode === "url" ? urlForm : textForm;
-  const watchedPlatforms = activeForm.watch("platforms") as string[];
-  const watchedCount = activeForm.watch("count") as number;
+  const watchedPlatforms = watch("platforms");
+  const watchedCount = watch("count");
 
   function togglePlatform(platform: string) {
     const current = watchedPlatforms;
     const next = current.includes(platform)
       ? current.filter((p) => p !== platform)
       : [...current, platform];
-    activeForm.setValue("platforms", next);
+    setValue("platforms", next);
   }
 
   const mutation = useMutation({
-    mutationFn: async (values: UrlFormValues | TextFormValues) => {
+    mutationFn: async (values: FormValues) => {
+      // Validate at submit time based on inputMode
+      if (inputMode === "url") {
+        if (!values.url) throw new Error("Enter a URL");
+        try {
+          new URL(values.url);
+        } catch {
+          throw new Error("Enter a valid URL");
+        }
+      } else {
+        if (!values.text || values.text.trim().length < 10) {
+          throw new Error("Paste at least 10 characters of text");
+        }
+      }
+
       const body =
         inputMode === "url"
           ? {
               workspaceId,
-              url: (values as UrlFormValues).url,
+              url: values.url,
               platforms: values.platforms,
               count: values.count,
             }
           : {
               workspaceId,
-              text: (values as TextFormValues).text,
+              text: values.text,
               platforms: values.platforms,
               count: values.count,
             };
@@ -142,10 +150,7 @@ export function AiContentAgent({
     },
   });
 
-  async function onUrlSubmit(values: UrlFormValues) {
-    await mutation.mutateAsync(values);
-  }
-  async function onTextSubmit(values: TextFormValues) {
+  async function onSubmit(values: FormValues) {
     await mutation.mutateAsync(values);
   }
 
@@ -169,12 +174,6 @@ export function AiContentAgent({
     );
     setEditState(null);
   }
-
-  const platformColor = (platform: string) =>
-    PLATFORM_COLORS[platform] ?? "#888";
-
-  const platformLabel = (platform: string) =>
-    PLATFORM_LABELS[platform] ?? platform;
 
   const totalPosts = watchedPlatforms.length * watchedCount;
 
@@ -218,81 +217,110 @@ export function AiContentAgent({
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Settings panel */}
-        <div className="space-y-5">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
           {/* URL input */}
           {inputMode === "url" && (
-            <form
-              onSubmit={urlForm.handleSubmit(onUrlSubmit)}
-              className="space-y-5"
-            >
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">Paste a URL</label>
-                <input
-                  {...urlForm.register("url")}
-                  type="url"
-                  placeholder="https://example.com/blog/my-article"
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                />
-                {urlForm.formState.errors.url && (
-                  <p className="text-xs text-destructive">
-                    {urlForm.formState.errors.url.message}
-                  </p>
-                )}
-              </div>
-              <SettingsSection
-                platforms={PLATFORMS as unknown as string[]}
-                selectedPlatforms={watchedPlatforms}
-                onTogglePlatform={togglePlatform}
-                count={watchedCount}
-                onSetCount={(c) => urlForm.setValue("count", c)}
-                platformLabel={platformLabel}
-                platformColor={platformColor}
-                error={urlForm.formState.errors.platforms?.message}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Paste a URL</label>
+              <input
+                {...register("url")}
+                type="url"
+                placeholder="https://example.com/blog/my-article"
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
               />
-              <GenerateButton
-                isPending={mutation.isPending}
-                totalPosts={totalPosts}
-              />
-            </form>
+            </div>
           )}
 
           {/* Text input */}
           {inputMode === "text" && (
-            <form
-              onSubmit={textForm.handleSubmit(onTextSubmit)}
-              className="space-y-5"
-            >
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">Paste your content</label>
-                <textarea
-                  {...textForm.register("text")}
-                  rows={6}
-                  placeholder="Paste a blog post, press release, newsletter, or any text content..."
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 resize-none"
-                />
-                {textForm.formState.errors.text && (
-                  <p className="text-xs text-destructive">
-                    {textForm.formState.errors.text.message}
-                  </p>
-                )}
-              </div>
-              <SettingsSection
-                platforms={PLATFORMS as unknown as string[]}
-                selectedPlatforms={watchedPlatforms}
-                onTogglePlatform={togglePlatform}
-                count={watchedCount}
-                onSetCount={(c) => textForm.setValue("count", c)}
-                platformLabel={platformLabel}
-                platformColor={platformColor}
-                error={textForm.formState.errors.platforms?.message}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Paste your content</label>
+              <textarea
+                {...register("text")}
+                rows={6}
+                placeholder="Paste a blog post, press release, newsletter, or any text content..."
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 resize-none"
               />
-              <GenerateButton
-                isPending={mutation.isPending}
-                totalPosts={totalPosts}
-              />
-            </form>
+            </div>
           )}
-        </div>
+
+          {/* Platform selector */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Target platforms</label>
+            <div className="flex flex-wrap gap-2">
+              {PLATFORMS.map((p) => {
+                const sel = watchedPlatforms.includes(p);
+                const color = PLATFORM_COLORS[p] ?? "#888";
+                const label = PLATFORM_LABELS[p] ?? p;
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => togglePlatform(p)}
+                    className={cn(
+                      "flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
+                      sel
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border bg-muted/40 text-muted-foreground hover:bg-muted"
+                    )}
+                  >
+                    <span
+                      className="inline-flex h-4 w-4 items-center justify-center rounded-full text-[8px] font-bold text-white flex-shrink-0"
+                      style={{ background: color }}
+                    >
+                      {p.charAt(0)}
+                    </span>
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+            {formState.errors.platforms && (
+              <p className="text-xs text-destructive">
+                {formState.errors.platforms.message}
+              </p>
+            )}
+          </div>
+
+          {/* Posts per platform */}
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Posts per platform</label>
+            <div className="flex gap-2">
+              {COUNT_OPTIONS.map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setValue("count", n)}
+                  className={cn(
+                    "flex-1 rounded-md border py-1.5 text-sm font-medium transition-colors",
+                    watchedCount === n
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-input bg-background hover:bg-muted"
+                  )}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Generate button */}
+          <Button
+            type="submit"
+            className="w-full gap-2"
+            disabled={mutation.isPending}
+          >
+            <Sparkles className="h-4 w-4" />
+            {mutation.isPending
+              ? "Generating..."
+              : `Generate ${totalPosts > 0 ? totalPosts : ""} Post${totalPosts !== 1 ? "s" : ""}`}
+            {!mutation.isPending && (
+              <Badge variant="secondary" className="ml-auto text-xs">
+                3 credits
+              </Badge>
+            )}
+          </Button>
+        </form>
 
         {/* Output panel */}
         <div className="space-y-4">
@@ -320,207 +348,107 @@ export function AiContentAgent({
           )}
 
           {!mutation.isPending &&
-            posts.map((post, idx) => (
-              <Card key={idx}>
-                <CardHeader className="flex flex-row items-center gap-2 pb-2 pt-3 px-4">
-                  <span
-                    className="inline-flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-bold text-white flex-shrink-0"
-                    style={{ background: platformColor(post.platform) }}
-                  >
-                    {post.platform.charAt(0)}
-                  </span>
-                  <span className="text-sm font-medium">
-                    {platformLabel(post.platform)}
-                  </span>
-                  <span className="ml-auto text-xs text-muted-foreground">
-                    {post.content.length} chars
-                  </span>
-                </CardHeader>
-                <CardContent className="px-4 pb-4 space-y-3">
-                  {editState?.idx === idx ? (
-                    <div className="space-y-2">
-                      <textarea
-                        value={editState.value}
-                        onChange={(e) =>
-                          setEditState({ idx, value: e.target.value })
-                        }
-                        rows={5}
-                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 resize-none"
-                      />
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          className="text-xs"
-                          onClick={saveEdit}
-                        >
-                          Save
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="text-xs"
-                          onClick={() => setEditState(null)}
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                        {post.content}
-                      </p>
-                      <div className="flex gap-2 flex-wrap">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="gap-1.5 text-xs"
-                          onClick={() => copyPost(post.content, idx)}
-                        >
-                          {copiedIdx === idx ? (
-                            <>
-                              <CheckCheck className="h-3.5 w-3.5 text-green-500" />
-                              Copied
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="h-3.5 w-3.5" />
-                              Copy
-                            </>
-                          )}
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="gap-1.5 text-xs"
-                          onClick={() => startEdit(idx, post.content)}
-                        >
-                          <Edit2 className="h-3.5 w-3.5" />
-                          Edit
-                        </Button>
-                        {onSendToComposer && (
+            posts.map((post, idx) => {
+              const color = PLATFORM_COLORS[post.platform] ?? "#888";
+              const label = PLATFORM_LABELS[post.platform] ?? post.platform;
+              return (
+                <Card key={idx}>
+                  <CardHeader className="flex flex-row items-center gap-2 pb-2 pt-3 px-4">
+                    <span
+                      className="inline-flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-bold text-white flex-shrink-0"
+                      style={{ background: color }}
+                    >
+                      {post.platform.charAt(0)}
+                    </span>
+                    <span className="text-sm font-medium">{label}</span>
+                    <span className="ml-auto text-xs text-muted-foreground">
+                      {post.content.length} chars
+                    </span>
+                  </CardHeader>
+                  <CardContent className="px-4 pb-4 space-y-3">
+                    {editState?.idx === idx ? (
+                      <div className="space-y-2">
+                        <textarea
+                          value={editState.value}
+                          onChange={(e) =>
+                            setEditState({ idx, value: e.target.value })
+                          }
+                          rows={5}
+                          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 resize-none"
+                        />
+                        <div className="flex gap-2">
                           <Button
-                            variant="default"
+                            size="sm"
+                            className="text-xs"
+                            onClick={saveEdit}
+                          >
+                            Save
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-xs"
+                            onClick={() => setEditState(null)}
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                          {post.content}
+                        </p>
+                        <div className="flex gap-2 flex-wrap">
+                          <Button
+                            variant="outline"
                             size="sm"
                             className="gap-1.5 text-xs"
-                            onClick={() =>
-                              onSendToComposer(post.platform, post.content)
-                            }
+                            onClick={() => copyPost(post.content, idx)}
                           >
-                            <ArrowRight className="h-3.5 w-3.5" />
-                            Send to Composer
+                            {copiedIdx === idx ? (
+                              <>
+                                <CheckCheck className="h-3.5 w-3.5 text-green-500" />
+                                Copied
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="h-3.5 w-3.5" />
+                                Copy
+                              </>
+                            )}
                           </Button>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="gap-1.5 text-xs"
+                            onClick={() => startEdit(idx, post.content)}
+                          >
+                            <Edit2 className="h-3.5 w-3.5" />
+                            Edit
+                          </Button>
+                          {onSendToComposer && (
+                            <Button
+                              variant="default"
+                              size="sm"
+                              className="gap-1.5 text-xs"
+                              onClick={() =>
+                                onSendToComposer(post.platform, post.content)
+                              }
+                            >
+                              <ArrowRight className="h-3.5 w-3.5" />
+                              Send to Composer
+                            </Button>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
         </div>
       </div>
     </div>
-  );
-}
-
-// ─── Sub-components ───────────────────────────────────────────────────────────
-
-function SettingsSection({
-  platforms,
-  selectedPlatforms,
-  onTogglePlatform,
-  count,
-  onSetCount,
-  platformLabel,
-  platformColor,
-  error,
-}: {
-  platforms: string[];
-  selectedPlatforms: string[];
-  onTogglePlatform: (p: string) => void;
-  count: number;
-  onSetCount: (n: number) => void;
-  platformLabel: (p: string) => string;
-  platformColor: (p: string) => string;
-  error?: string;
-}) {
-  const COUNT_OPTIONS = [1, 3, 5];
-
-  return (
-    <>
-      <div className="space-y-2">
-        <label className="text-sm font-medium">Target platforms</label>
-        <div className="flex flex-wrap gap-2">
-          {platforms.map((p) => {
-            const sel = selectedPlatforms.includes(p);
-            return (
-              <button
-                key={p}
-                type="button"
-                onClick={() => onTogglePlatform(p)}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
-                  sel
-                    ? "border-primary bg-primary/10 text-primary"
-                    : "border-border bg-muted/40 text-muted-foreground hover:bg-muted"
-                )}
-              >
-                <span
-                  className="inline-flex h-4 w-4 items-center justify-center rounded-full text-[8px] font-bold text-white flex-shrink-0"
-                  style={{ background: platformColor(p) }}
-                >
-                  {p.charAt(0)}
-                </span>
-                {platformLabel(p)}
-              </button>
-            );
-          })}
-        </div>
-        {error && <p className="text-xs text-destructive">{error}</p>}
-      </div>
-
-      <div className="space-y-1.5">
-        <label className="text-sm font-medium">Posts per platform</label>
-        <div className="flex gap-2">
-          {COUNT_OPTIONS.map((n) => (
-            <button
-              key={n}
-              type="button"
-              onClick={() => onSetCount(n)}
-              className={cn(
-                "flex-1 rounded-md border py-1.5 text-sm font-medium transition-colors",
-                count === n
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "border-input bg-background hover:bg-muted"
-              )}
-            >
-              {n}
-            </button>
-          ))}
-        </div>
-      </div>
-    </>
-  );
-}
-
-function GenerateButton({
-  isPending,
-  totalPosts,
-}: {
-  isPending: boolean;
-  totalPosts: number;
-}) {
-  return (
-    <Button type="submit" className="w-full gap-2" disabled={isPending}>
-      <Sparkles className="h-4 w-4" />
-      {isPending
-        ? "Generating..."
-        : `Generate ${totalPosts > 0 ? totalPosts : ""} Post${totalPosts !== 1 ? "s" : ""}`}
-      {!isPending && (
-        <Badge variant="secondary" className="ml-auto text-xs">
-          3 credits
-        </Badge>
-      )}
-    </Button>
   );
 }

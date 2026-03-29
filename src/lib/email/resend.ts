@@ -1,7 +1,47 @@
-/**
- * Email sending utilities using Resend.
- * Stub implementation — wire up a real Resend client when RESEND_API_KEY is set.
- */
+import { Resend } from "resend";
+import { render } from "@react-email/render";
+import React from "react";
+
+import WelcomeEmail, {
+  type WelcomeEmailProps,
+} from "@/emails/welcome";
+import InviteMemberEmail, {
+  type InviteMemberEmailProps,
+} from "@/emails/invite-member";
+import PostApprovalRequestEmail, {
+  type PostApprovalRequestEmailProps,
+} from "@/emails/post-approval-request";
+import PostApprovedEmail, {
+  type PostApprovedEmailProps,
+} from "@/emails/post-approved";
+import PostFailedEmail, {
+  type PostFailedEmailProps,
+} from "@/emails/post-failed";
+import TrialExpiringEmail, {
+  type TrialExpiringEmailProps,
+} from "@/emails/trial-expiring";
+import SubscriptionReceiptEmail, {
+  type SubscriptionReceiptEmailProps,
+} from "@/emails/subscription-receipt";
+import MagicLinkEmail, {
+  type MagicLinkEmailProps,
+} from "@/emails/magic-link";
+
+// Re-export prop types so callers can import them from one place
+export type {
+  WelcomeEmailProps,
+  InviteMemberEmailProps,
+  PostApprovalRequestEmailProps,
+  PostApprovedEmailProps,
+  PostFailedEmailProps,
+  TrialExpiringEmailProps,
+  SubscriptionReceiptEmailProps,
+  MagicLinkEmailProps,
+};
+
+// ---------------------------------------------------------------------------
+// Legacy payload types (used by existing approval routes — preserved as-is)
+// ---------------------------------------------------------------------------
 
 export interface ApprovalRequestEmailPayload {
   /** Email address of the manager to notify */
@@ -29,10 +69,146 @@ export interface ApprovalDecisionEmailPayload {
   workspaceName: string;
 }
 
-async function sendEmail(payload: Record<string, unknown>): Promise<void> {
+// ---------------------------------------------------------------------------
+// Resend client
+// ---------------------------------------------------------------------------
+
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+const FROM_EMAIL =
+  process.env.RESEND_FROM_EMAIL ?? "PostSyncer <hello@postsyncer.com>";
+
+// ---------------------------------------------------------------------------
+// Core send helper (React Email templates)
+// ---------------------------------------------------------------------------
+
+export async function sendEmail<T extends Record<string, unknown>>({
+  to,
+  subject,
+  template: Template,
+  props,
+}: {
+  to: string;
+  subject: string;
+  template: React.ComponentType<T>;
+  props: T;
+}) {
+  const html = await render(React.createElement(Template, props));
+  return resend.emails.send({
+    from: FROM_EMAIL,
+    to,
+    subject,
+    html,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Convenience helpers — React Email templates
+// ---------------------------------------------------------------------------
+
+export async function sendWelcomeEmail(to: string, props: WelcomeEmailProps) {
+  return sendEmail({
+    to,
+    subject: "Welcome to PostSyncer — let's get you set up",
+    template: WelcomeEmail,
+    props,
+  });
+}
+
+export async function sendInviteEmail(
+  to: string,
+  props: InviteMemberEmailProps
+) {
+  return sendEmail({
+    to,
+    subject: `${props.workspaceName} has invited you to join PostSyncer`,
+    template: InviteMemberEmail,
+    props,
+  });
+}
+
+export async function sendApprovalRequestReactEmail(
+  to: string,
+  props: PostApprovalRequestEmailProps
+) {
+  return sendEmail({
+    to,
+    subject: `New post waiting for your approval — ${props.workspaceName}`,
+    template: PostApprovalRequestEmail,
+    props,
+  });
+}
+
+export async function sendPostApprovedEmail(
+  to: string,
+  props: PostApprovedEmailProps
+) {
+  return sendEmail({
+    to,
+    subject: `Your post was approved in ${props.workspaceName}`,
+    template: PostApprovedEmail,
+    props,
+  });
+}
+
+export async function sendPostFailedEmail(
+  to: string,
+  props: PostFailedEmailProps
+) {
+  const platformDisplay =
+    props.platformName.charAt(0).toUpperCase() +
+    props.platformName.slice(1);
+  return sendEmail({
+    to,
+    subject: `\u26A0 Post failed to publish on ${platformDisplay}`,
+    template: PostFailedEmail,
+    props,
+  });
+}
+
+export async function sendTrialExpiringEmail(
+  to: string,
+  props: TrialExpiringEmailProps
+) {
+  return sendEmail({
+    to,
+    subject: `Your PostSyncer trial ends in ${props.daysRemaining} day${props.daysRemaining === 1 ? "" : "s"}`,
+    template: TrialExpiringEmail,
+    props,
+  });
+}
+
+export async function sendSubscriptionReceiptEmail(
+  to: string,
+  props: SubscriptionReceiptEmailProps
+) {
+  return sendEmail({
+    to,
+    subject: `Your PostSyncer receipt — Invoice #${props.invoiceNumber}`,
+    template: SubscriptionReceiptEmail,
+    props,
+  });
+}
+
+export async function sendMagicLinkEmail(
+  to: string,
+  props: MagicLinkEmailProps
+) {
+  return sendEmail({
+    to,
+    subject: "Your PostSyncer sign-in link",
+    template: MagicLinkEmail,
+    props,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Legacy helpers — plain HTML (kept for backward-compat with existing routes)
+// ---------------------------------------------------------------------------
+
+async function sendLegacyEmail(payload: Record<string, unknown>): Promise<void> {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
-    // Log in development; silently skip in production without a key
     console.log("[email] RESEND_API_KEY not set, skipping email:", payload);
     return;
   }
@@ -58,6 +234,7 @@ async function sendEmail(payload: Record<string, unknown>): Promise<void> {
 
 /**
  * Notify a manager that a new post has been submitted for approval.
+ * @deprecated Use sendApprovalRequestReactEmail for the React Email version.
  */
 export async function sendApprovalRequestEmail(
   data: ApprovalRequestEmailPayload
@@ -65,7 +242,7 @@ export async function sendApprovalRequestEmail(
   const from = process.env.EMAIL_FROM ?? "Postage <noreply@mail.postage.app>";
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://app.postage.app";
 
-  await sendEmail({
+  await sendLegacyEmail({
     from,
     to: data.managerEmail,
     subject: `New post awaiting your approval — ${data.workspaceName}`,
@@ -109,9 +286,11 @@ export async function sendApprovalDecisionEmail(
   };
 
   const label = decisionLabels[data.decision] ?? data.decision;
-  const subject = subjectLabels[data.decision] ?? `Post review update — ${data.workspaceName}`;
+  const subject =
+    subjectLabels[data.decision] ??
+    `Post review update — ${data.workspaceName}`;
 
-  await sendEmail({
+  await sendLegacyEmail({
     from,
     to: data.authorEmail,
     subject: `${subject} — ${data.workspaceName}`,

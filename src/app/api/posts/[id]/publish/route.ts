@@ -57,7 +57,7 @@ export async function POST(
     return NextResponse.json(
       {
         error: `Cannot manually publish a post with status "${post.status}". ` +
-          `Allowed statuses: ${[...PUBLISHABLE_STATUSES].join(", ")}.`,
+          `Allowed statuses: ${Array.from(PUBLISHABLE_STATUSES).join(", ")}.`,
       },
       { status: 409 }
     );

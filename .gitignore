@@ -20,10 +20,10 @@ tsconfig.tsbuildinfo
 .env.test.local
 .env.production.local
 
-# Package manager lock files (keep package-lock.json or yarn.lock, not both)
-# Uncomment one if needed:
-# yarn.lock
-# pnpm-lock.yaml
+# Package manager lock files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
 
 # Vercel
 .vercel
